@@ -1,0 +1,82 @@
+#root {
+  width: 100%;
+  height: 100vh;
+  margin: 0;
+  padding: 0;
+}
+
+.logo {
+  height: 6em;
+  padding: 1.5em;
+  will-change: filter;
+  transition: filter 300ms;
+}
+.logo:hover {
+  filter: drop-shadow(0 0 2em #646cffaa);
+}
+.logo.react:hover {
+  filter: drop-shadow(0 0 2em #61dafbaa);
+}
+
+@keyframes logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  a:nth-of-type(2) .logo {
+    animation: logo-spin infinite 20s linear;
+  }
+}
+
+.card {
+  padding: 2em;
+}
+
+.read-the-docs {
+  color: #888;
+}
+
+/* Custom styles to fix card interactivity issues */
+.f3 .f3-svg-circle-hover {
+  pointer-events: auto !important;
+  z-index: 1000 !important;
+}
+
+.f3 .f3-svg-circle-hover svg {
+  pointer-events: none;
+}
+
+.f3 .f3-svg-circle-hover:hover {
+  opacity: 0.8;
+  transform: scale(1.1);
+  transition: all 0.2s ease;
+}
+
+/* Ensure card hover effects work */
+.f3 div.card {
+  pointer-events: auto !important;
+}
+
+.f3 div.card:hover > div {
+  transform: translate(0, -2px) !important;
+  transition: transform 0.2s ease-in-out !important;
+}
+
+/* Fix button positioning and visibility */
+.f3 .edit-button,
+.f3 .add-button {
+  pointer-events: auto !important;
+  z-index: 1000 !important;
+  position: absolute !important;
+}
+
+.f3 .edit-button:hover,
+.f3 .add-button:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+}
