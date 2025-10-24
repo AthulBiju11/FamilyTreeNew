@@ -33,7 +33,7 @@ export default function FamilyTree() {
 
     const initializeChart = () => {
       // Assume user_type is available in this scope
-      const user_type = 'admin'; // or 'admin'
+      const user_type = 'user'; // or 'admin'
     
       // Clean up any existing chart
       if (chartInstanceRef.current) {
@@ -235,6 +235,15 @@ export default function FamilyTree() {
       });
       
       f3Chart.updateTree({initial: true});
+      
+      // Override the closeForm method to prevent tree recentering
+      const originalCloseForm = f3EditTree.closeForm;
+      f3EditTree.closeForm = function() {
+        this.formCont.close();
+        // Use 'inherit' tree_position to prevent recentering
+        this.store.updateTree({tree_position: 'inherit'});
+      };
+      
       setIsInitialized(true);
     };
 
