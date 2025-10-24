@@ -33,7 +33,7 @@ export default function FamilyTree() {
 
     const initializeChart = () => {
       // Assume user_type is available in this scope
-      const user_type = 'user'; // or 'admin'
+      const user_type = 'admin'; // or 'admin'
     
       // Clean up any existing chart
       if (chartInstanceRef.current) {
@@ -90,6 +90,8 @@ export default function FamilyTree() {
           }, 500);
         })
         .setOnFormCreation((props) => {
+          console.log('Form creation props:', props);
+          console.log('Form creator object:', props.form_creator);
           if (user_type === 'user') {
             const formContainer = props.cont;
 
@@ -122,6 +124,33 @@ export default function FamilyTree() {
             // Hide the "Remove Person" button
             const removePersonButton = formContainer.querySelector('.f3-edit-form-delete-btn');
             if(removePersonButton) removePersonButton.style.display = 'none';
+          } else if (user_type === 'admin') {
+            // For admins, override the add relative button behavior
+            const formContainer = props.cont;
+            
+            setTimeout(() => {
+              const addRelativeButton = formContainer.querySelector('.f3-add-relative-btn');
+              if (addRelativeButton) {
+                addRelativeButton.onclick = (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  console.log('Add relative button clicked in form');
+                  
+                  // Get the current person's data using datum_id
+                  const currentPersonId = props.form_creator?.datum_id;
+                  const currentPerson = chartInstanceRef.current.store.getData().find(p => p.id === currentPersonId);
+                  console.log('Current person ID:', currentPersonId);
+                  console.log('Current person data:', currentPerson);
+                  
+                  if (currentPerson) {
+                    // Same simple approach as the card button
+                    f3EditTree.addRelative(currentPerson);
+                    chartInstanceRef.current.updateMainId(currentPerson.id);
+                    chartInstanceRef.current.updateTree({});
+                  }
+                };
+              }
+            }, 100);
           }
         });
     
@@ -172,8 +201,12 @@ export default function FamilyTree() {
 
             const addHandler = (e) => {
               e.stopPropagation();
-              f3EditTree.open(d.data);
-              setTimeout(() => document.querySelector('.f3-add-relative-btn').click(), 50);
+              console.log('Add button clicked for person:', d.data);
+              // Directly activate add relative mode instead of opening edit form
+              f3EditTree.addRelative(d.data);
+              // Center the tree on the selected person to show relationship options
+              f3Chart.updateMainId(d.data.id);
+              f3Chart.updateTree({});
             };
 
             editButton.addEventListener('click', editHandler);
@@ -184,6 +217,13 @@ export default function FamilyTree() {
       f3Card.setOnCardClick((e, d) => {
         if (user_type === 'user') {
           f3EditTree.setNoEdit().open(d.data);
+          return;
+        }
+    
+        // Handle relationship placeholder cards (new relatives)
+        if (d.data._new_rel_data) {
+          console.log('Clicked on relationship placeholder:', d.data._new_rel_data);
+          f3EditTree.open(d.data);
           return;
         }
     
