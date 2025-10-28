@@ -80,3 +80,19 @@
   background-color: rgba(255, 255, 255, 0.1);
   border-radius: 50%;
 }
+
+/* Override autocomplete dropdown to be opaque white */
+.f3-autocomplete input {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  border: 1px solid rgba(0, 0, 0, 0.2) !important;
+}
+
+.f3-autocomplete-items {
+  background-color: #ffffff !important;
+  border: 1px solid rgba(0, 0, 0, 0.2) !important;
+}
+
+.f3-autocomplete-item > div {
+  color: #000000 !important;
+}

@@ -17,6 +17,7 @@ function filterFamily(data, parentId) {
 export default function FamilyTree() {
   const containerRef = useRef(null);
   const chartInstanceRef = useRef(null);
+  const navRef = useRef(null);
   const [isInitialized, setIsInitialized] = useState(false);
 
   // Add reset function to global scope for debugging
@@ -68,6 +69,22 @@ export default function FamilyTree() {
     
       chartInstanceRef.current = f3Chart;
     
+      // Setup built-in person search dropdown
+      const getLabel = (d) => {
+        const first = d?.data?.data?.['first name'] ?? d?.data?.['first name'] ?? '';
+        const last = d?.data?.data?.['last name'] ?? d?.data?.['last name'] ?? '';
+        const name = `${first} ${last}`.trim();
+        return name || (d?.data?.id ?? d?.id ?? '');
+      };
+      try {
+        f3Chart.setPersonDropdown(getLabel, {
+          cont: navRef.current,
+          placeholder: 'Search person...'
+        });
+      } catch (err) {
+        console.error('Failed to initialize person search dropdown:', err);
+      }
+
     
       const f3EditTree = f3Chart.editTree()
         .fixed(true)
@@ -259,17 +276,26 @@ export default function FamilyTree() {
   }, []);
 
   return (
-    <div 
-      className="f3" 
-      id="FamilyChart" 
-      ref={containerRef} 
-      style={{
-        width: '100vw',
-        height: '100vh',
-        margin: 0,
-        backgroundColor: 'rgb(33,33,33)',
-        color: '#fff'
-      }}
-    />
+    <div style={{ width: '100vw', height: '100vh', margin: 0 }}>
+      <div 
+        ref={navRef}
+        style={{
+          position: 'absolute',
+          zIndex: 10,
+          padding: '10px'
+        }}
+      />
+      <div 
+        className="f3" 
+        id="FamilyChart" 
+        ref={containerRef} 
+        style={{
+          width: '100%',
+          height: '100%',
+          backgroundColor: 'rgb(33,33,33)',
+          color: '#fff'
+        }}
+      />
+    </div>
   );
 }
