@@ -19,6 +19,8 @@ export default function FamilyTree() {
   const chartInstanceRef = useRef(null);
   const navRef = useRef(null);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [resetKey, setResetKey] = useState(0);
+  const [isFormOpen, setIsFormOpen] = useState(false);
 
   // Add reset function to global scope for debugging
   useEffect(() => {
@@ -30,24 +32,24 @@ export default function FamilyTree() {
   }, []);
 
   useEffect(() => {
-    if (!containerRef.current || isInitialized) return;
+    if (!containerRef.current) return;
 
     const initializeChart = () => {
       // Assume user_type is available in this scope
       const user_type = 'user'; // or 'admin'
-    
+
       // Clean up any existing chart
       if (chartInstanceRef.current) {
         d3.select('#FamilyChart').selectAll('*').remove();
         chartInstanceRef.current = null;
       }
-    
-      
+
+
       // Check for saved data in localStorage
       let initialData = familyData;
       let new_data = familyData.filter(item => item.data.UNID == "10");
 
-      console.log("new_data",new_data)
+      console.log("new_data", new_data)
 
       // console.log(initialData)
 
@@ -58,17 +60,17 @@ export default function FamilyTree() {
           console.log('Loaded data from localStorage');
         }
       } catch (error) {
-          console.error('Error loading data from localStorage:', error);
-        }
-    
+        console.error('Error loading data from localStorage:', error);
+      }
+
       // const f3Chart = f3.createChart('#FamilyChart', new_data)
       const f3Chart = f3.createChart('#FamilyChart', initialData)
         .setTransitionTime(1000)
         .setCardXSpacing(250)
         .setCardYSpacing(150);
-    
+
       chartInstanceRef.current = f3Chart;
-    
+
       // Setup built-in person search dropdown
       const getLabel = (d) => {
         const first = d?.data?.data?.['first name'] ?? d?.data?.['first name'] ?? '';
@@ -79,29 +81,34 @@ export default function FamilyTree() {
       try {
         f3Chart.setPersonDropdown(getLabel, {
           cont: navRef.current,
-          placeholder: 'Search person...'
+          placeholder: 'Search person...',
+          onSelect: (personId) => {
+            // Custom handler: only update tree view, don't open form
+            f3Chart.updateMainId(personId);
+            f3Chart.updateTree({ initial: false });
+          }
         });
       } catch (err) {
         console.error('Failed to initialize person search dropdown:', err);
       }
 
-    
+
       const f3EditTree = f3Chart.editTree()
         .fixed(true)
-        .setFields(["first name","last name","birthday","anniversary","mobile_no","whatsapp_number","achievements","profession","address","death_date","nick_name"])
+        .setFields(["first name", "last name", "birthday", "anniversary", "mobile_no", "whatsapp_number", "achievements", "profession", "address", "death_date", "nick_name"])
         .setEditFirst(false)
         .setOnChange(() => {
           // This will only be called by admins
           const updatedData = f3EditTree.getStoreDataCopy();
           console.log('Data changed, saving to localStorage:', updatedData);
-          
+
           try {
             localStorage.setItem('familyTreeData', JSON.stringify(updatedData));
             console.log('Data saved to localStorage');
           } catch (error) {
             console.error('Error saving data to localStorage:', error);
           }
-          
+
           setTimeout(() => {
             window.location.reload();
           }, 500);
@@ -128,7 +135,7 @@ export default function FamilyTree() {
             });
 
             // 3. Hide all action buttons
-            
+
             // *** THIS IS THE CORRECTED PART ***
             // Hide the "Update" button
             const submitButton = formContainer.querySelector('.f3-edit-form-submit-btn');
@@ -140,11 +147,11 @@ export default function FamilyTree() {
 
             // Hide the "Remove Person" button
             const removePersonButton = formContainer.querySelector('.f3-edit-form-delete-btn');
-            if(removePersonButton) removePersonButton.style.display = 'none';
+            if (removePersonButton) removePersonButton.style.display = 'none';
           } else if (user_type === 'admin') {
             // For admins, override the add relative button behavior
             const formContainer = props.cont;
-            
+
             setTimeout(() => {
               const addRelativeButton = formContainer.querySelector('.f3-add-relative-btn');
               if (addRelativeButton) {
@@ -152,13 +159,13 @@ export default function FamilyTree() {
                   e.preventDefault();
                   e.stopPropagation();
                   console.log('Add relative button clicked in form');
-                  
+
                   // Get the current person's data using datum_id
                   const currentPersonId = props.form_creator?.datum_id;
                   const currentPerson = chartInstanceRef.current.store.getData().find(p => p.id === currentPersonId);
                   console.log('Current person ID:', currentPersonId);
                   console.log('Current person data:', currentPerson);
-                  
+
                   if (currentPerson) {
                     // Same simple approach as the card button
                     f3EditTree.addRelative(currentPerson);
@@ -170,25 +177,25 @@ export default function FamilyTree() {
             }, 100);
           }
         });
-    
+
       // Conditionally remove on-card edit/add icons for non-admins
       if (user_type !== 'admin') {
         f3EditTree.setNoEdit();
       }
-      
+
       f3EditTree.setEdit();
-      
+
       const f3Card = f3Chart.setCardHtml()
-        .setOnCardUpdate(function(d) {
+        .setOnCardUpdate(function (d) {
           if (d.data._new_rel_data) return;
           if (f3EditTree.isRemovingRelative()) return;
-    
+
           const cardElement = this;
-          d3.select(cardElement).select('.card').style('cursor', 'pointer'); 
+          d3.select(cardElement).select('.card').style('cursor', 'pointer');
           const card = cardElement.querySelector('.card-inner');
-          
+
           d3.select(card).style('position', 'relative');
-          
+
           d3.select(card).selectAll('.f3-svg-circle-hover').remove();
 
           if (user_type === 'admin') {
@@ -197,20 +204,20 @@ export default function FamilyTree() {
               .attr('class', 'f3-svg-circle-hover edit-button')
               .attr('style', 'cursor: pointer; width: 20px; height: 20px; position: absolute; top: 5px; right: 5px; z-index: 1000;')
               .html(f3.icons.userEditSvgIcon());
-            
+
             editButtonDiv.select('svg').style('padding', '0');
-            
+
             const addButtonDiv = d3.select(card)
               .append('div')
               .attr('class', 'f3-svg-circle-hover add-button')
               .attr('style', 'cursor: pointer; width: 20px; height: 20px; position: absolute; top: 5px; right: 30px; z-index: 1000;')
               .html(f3.icons.userPlusSvgIcon());
-            
+
             addButtonDiv.select('svg').style('padding', '0');
-            
+
             const editButton = editButtonDiv.node();
             const addButton = addButtonDiv.node();
-            
+
             const editHandler = (e) => {
               e.stopPropagation();
               f3EditTree.open(d.data);
@@ -230,65 +237,116 @@ export default function FamilyTree() {
             addButton.addEventListener('click', addHandler);
           }
         });
-    
+
       f3Card.setOnCardClick((e, d) => {
         if (user_type === 'user') {
           f3EditTree.setNoEdit().open(d.data);
           return;
         }
-    
+
         // Handle relationship placeholder cards (new relatives)
         if (d.data._new_rel_data) {
           console.log('Clicked on relationship placeholder:', d.data._new_rel_data);
           f3EditTree.open(d.data);
           return;
         }
-    
+
         if (f3EditTree.isAddingRelative() || f3EditTree.isRemovingRelative()) {
           f3EditTree.closeForm();
         } else {
           f3EditTree.open(d.data);
         }
       });
-      
-      f3Chart.updateTree({initial: true});
-      
+
+      f3Chart.updateTree({ initial: true });
+
       // Override the closeForm method to prevent tree recentering
       const originalCloseForm = f3EditTree.closeForm;
-      f3EditTree.closeForm = function() {
+      f3EditTree.closeForm = function () {
         this.formCont.close();
         // Use 'inherit' tree_position to prevent recentering
-        this.store.updateTree({tree_position: 'inherit'});
+        this.store.updateTree({ tree_position: 'inherit' });
       };
-      
+
       setIsInitialized(true);
+
+      // Setup MutationObserver to detect form opening/closing
+      const formCont = containerRef.current.querySelector('.f3-form-cont');
+      if (formCont) {
+        const observer = new MutationObserver((mutations) => {
+          mutations.forEach((mutation) => {
+            if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+              const isOpen = formCont.classList.contains('opened');
+              setIsFormOpen(isOpen);
+            }
+          });
+        });
+
+        observer.observe(formCont, { attributes: true });
+
+        // Store observer for cleanup if needed, but since we clear chart in cleanup, 
+        // the node observer is attached to will be removed anyway. 
+        // Explicit cleanup is safer though.
+        chartInstanceRef.current.formObserver = observer;
+      }
     };
 
     const timer = setTimeout(initializeChart, 100);
-    
+
     return () => {
       clearTimeout(timer);
       if (chartInstanceRef.current) {
+        if (chartInstanceRef.current.formObserver) {
+          chartInstanceRef.current.formObserver.disconnect();
+        }
         d3.select('#FamilyChart').selectAll('*').remove();
         chartInstanceRef.current = null;
       }
+      if (navRef.current) {
+        navRef.current.innerHTML = '';
+      }
     };
-  }, []);
+  }, [resetKey]);
 
   return (
     <div style={{ width: '100vw', height: '100vh', margin: 0 }}>
-      <div 
-        ref={navRef}
+      <div
+        className={`f3-controls ${isFormOpen ? 'hidden-mobile' : ''}`}
         style={{
           position: 'absolute',
           zIndex: 10,
-          padding: '10px'
-        }}
-      />
-      <div 
-        className="f3" 
-        id="FamilyChart" 
-        ref={containerRef} 
+          padding: '10px',
+          display: 'flex',
+          gap: '10px',
+          alignItems: 'flex-start',
+          flexWrap: 'wrap',
+          maxWidth: '100%'
+        }}>
+        <div ref={navRef} style={{ minWidth: '250px' }} />
+        {isInitialized && (
+          <button
+            onClick={() => {
+              setIsInitialized(false);
+              setResetKey(prev => prev + 1);
+            }}
+            style={{
+              padding: '8px 12px',
+              backgroundColor: '#444',
+              color: 'white',
+              border: '1px solid #666',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              marginTop: '1px' // Align with the search input
+            }}
+          >
+            Reset View
+          </button>
+        )}
+      </div>
+      <div
+        className="f3"
+        id="FamilyChart"
+        ref={containerRef}
         style={{
           width: '100%',
           height: '100%',
