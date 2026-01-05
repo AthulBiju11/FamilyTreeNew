@@ -116,9 +116,61 @@ export default function FamilyTree() {
         .setOnFormCreation((props) => {
           console.log('Form creation props:', props);
           console.log('Form creator object:', props.form_creator);
-          if (user_type === 'user') {
-            const formContainer = props.cont;
+          console.log('Full datum:', props.form_creator?.datum);
 
+          const formContainer = props.cont;
+
+          // Add profile image at the top for both user and admin
+          // Get person data from the chart store using datum_id
+          const datumId = props.form_creator?.datum_id;
+          const personData = datumId
+            ? chartInstanceRef.current.store.getData().find(p => p.id === datumId)?.data
+            : null;
+          const avatarUrl = personData?.avatar;
+
+          console.log('Datum ID:', datumId);
+          console.log('Person data:', personData);
+          console.log('Avatar URL:', avatarUrl);
+
+          if (avatarUrl) {
+            // Create image container
+            const imageContainer = document.createElement('div');
+            imageContainer.className = 'profile-image-container';
+            imageContainer.style.cssText = `
+              display: flex;
+              justify-content: center;
+              align-items: center;
+              padding: 20px 0;
+              margin-bottom: 20px;
+            `;
+
+            // Create circular image
+            const img = document.createElement('img');
+            img.src = avatarUrl;
+            img.alt = 'Profile Picture';
+            img.style.cssText = `
+              width: 120px;
+              height: 120px;
+              border-radius: 50%;
+              object-fit: cover;
+              border: 3px solid var(--text-color);
+              box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+            `;
+
+            imageContainer.appendChild(img);
+
+            // Insert at the very top of the form container
+            const formElement = formContainer.querySelector('.f3-form');
+            if (formElement && formElement.firstChild) {
+              formElement.insertBefore(imageContainer, formElement.firstChild);
+            } else if (formContainer.firstChild) {
+              formContainer.insertBefore(imageContainer, formContainer.firstChild);
+            }
+          } else {
+            console.warn('No avatar URL found for this person');
+          }
+
+          if (user_type === 'user') {
             // 1. Change the title to "Person Details"
             const titleElement = formContainer.querySelector('.f3-edit-form-title');
             if (titleElement) {
