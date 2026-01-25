@@ -2,14 +2,12 @@ import React, { useEffect, useRef, useState } from "react";
 import * as d3 from 'd3';
 import * as f3 from 'family-chart';
 import 'family-chart/styles/family-chart.css';
-import familyData from './family_data.json';
+
+// We no longer import familyData from the local JSON file.
+// We will fetch it from Cloudflare instead.
 
 function filterFamily(data, parentId) {
-  // The filter method creates a new array with all elements that pass the test implemented by the provided function.
   return data.filter(person => {
-    // We include the person in the new array if:
-    // 1. Their own 'id' matches the parentId (this includes the parent themselves).
-    // 2. Their 'rels.parents' array contains the parentId (this includes all their children).
     return person.id === parentId || (person.rels && person.rels.parents && person.rels.parents.includes(parentId));
   });
 }
@@ -22,21 +20,55 @@ export default function FamilyTree() {
   const [resetKey, setResetKey] = useState(0);
   const [isFormOpen, setIsFormOpen] = useState(false);
 
+  // NEW STATES FOR CLOUDFLARE
+  const [treeData, setTreeData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  // CONFIGURATION (Placeholders)
+  const CLOUDFLARE_WORKER_URL = "https://restless-disk-ba09.athulbijuts.workers.dev";
+  const ADMIN_SECRET_PASSWORD = "family_tree_password"; // PASTE YOUR SECRET PASSWORD HERE
+
+  // 1. FETCH DATA FROM CLOUDFLARE ON LOAD
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch(CLOUDFLARE_WORKER_URL);
+        const data = await response.json();
+
+        // If Worker returns the "No data yet" object, handle it
+        if (data.message === "No data yet") {
+          setTreeData([]);
+        } else {
+          setTreeData(data);
+        }
+      } catch (error) {
+        console.error("Error fetching from Cloudflare:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [resetKey]);
+
   // Add reset function to global scope for debugging
   useEffect(() => {
     window.resetFamilyTreeData = () => {
+      // For this version, reset would ideally mean pushing the original JSON back to Cloudflare.
+      // For now, we'll just clear cache.
       localStorage.removeItem('familyTreeData');
-      console.log('Data reset to original');
+      console.log('Local Cache Reset');
       window.location.reload();
     };
   }, []);
 
   useEffect(() => {
-    if (!containerRef.current) return;
+    // Only initialize if we have a container AND we have fetched the treeData
+    if (!containerRef.current || !treeData) return;
 
     const initializeChart = () => {
-      // Assume user_type is available in this scope
-      const user_type = 'user'; // or 'admin'
+      const user_type = 'admin';
 
       // Clean up any existing chart
       if (chartInstanceRef.current) {
@@ -44,26 +76,9 @@ export default function FamilyTree() {
         chartInstanceRef.current = null;
       }
 
+      // We use the treeData fetched from Cloudflare
+      let initialData = treeData;
 
-      // Check for saved data in localStorage
-      let initialData = familyData;
-      let new_data = familyData.filter(item => item.data.UNID == "10");
-
-      console.log("new_data", new_data)
-
-      // console.log(initialData)
-
-      try {
-        const savedData = localStorage.getItem('familyTreeData');
-        if (savedData) {
-          initialData = JSON.parse(savedData);
-          console.log('Loaded data from localStorage');
-        }
-      } catch (error) {
-        console.error('Error loading data from localStorage:', error);
-      }
-
-      // const f3Chart = f3.createChart('#FamilyChart', new_data)
       const f3Chart = f3.createChart('#FamilyChart', initialData)
         .setTransitionTime(1000)
         .setCardXSpacing(250)
@@ -71,42 +86,149 @@ export default function FamilyTree() {
 
       chartInstanceRef.current = f3Chart;
 
-      // Setup built-in person search dropdown
       const getLabel = (d) => {
         const first = d?.data?.data?.['first name'] ?? d?.data?.['first name'] ?? '';
         const last = d?.data?.data?.['last name'] ?? d?.data?.['last name'] ?? '';
         const name = `${first} ${last}`.trim();
         return name || (d?.data?.id ?? d?.id ?? '');
       };
+
       try {
         f3Chart.setPersonDropdown(getLabel, {
           cont: navRef.current,
           placeholder: 'Search person...',
           onSelect: (personId) => {
-            // Custom handler: only update tree view, don't open form
             f3Chart.updateMainId(personId);
             f3Chart.updateTree({ initial: false });
           }
         });
+
+        // Fix dropdown visibility - hide when empty, show when active
+        setTimeout(() => {
+          const autocompleteContainer = navRef.current?.querySelector('.f3-autocomplete');
+          const autocompleteInput = navRef.current?.querySelector('.f3-autocomplete input');
+          const autocompleteItems = navRef.current?.querySelector('.f3-autocomplete-items');
+
+          if (autocompleteContainer && autocompleteInput && autocompleteItems) {
+            // Hide dropdown initially
+            autocompleteItems.style.display = 'none';
+
+            // Function to check if dropdown should be visible
+            const shouldShowDropdown = () => {
+              return autocompleteItems.children.length > 0 &&
+                (autocompleteInput === document.activeElement ||
+                  autocompleteContainer.classList.contains('f3-autocomplete-active'));
+            };
+
+            // Hide dropdown
+            const hideDropdown = () => {
+              autocompleteItems.style.display = 'none';
+              autocompleteContainer.classList.remove('f3-autocomplete-active');
+            };
+
+            // Show dropdown if it has items
+            const showDropdown = () => {
+              if (autocompleteItems.children.length > 0) {
+                autocompleteItems.style.display = 'block';
+                autocompleteContainer.classList.add('f3-autocomplete-active');
+              }
+            };
+
+            // Show/hide on input focus/blur
+            autocompleteInput.addEventListener('focus', () => {
+              if (autocompleteItems.children.length > 0) {
+                showDropdown();
+              }
+            });
+
+            autocompleteInput.addEventListener('blur', () => {
+              // Delay to allow click events on items to register
+              setTimeout(() => {
+                if (!autocompleteContainer.contains(document.activeElement)) {
+                  hideDropdown();
+                }
+              }, 200);
+            });
+
+            // Monitor for changes in dropdown items
+            const observer = new MutationObserver(() => {
+              if (autocompleteItems.children.length > 0) {
+                // Only show if input is focused or container is active
+                if (autocompleteInput === document.activeElement ||
+                  autocompleteContainer.classList.contains('f3-autocomplete-active')) {
+                  showDropdown();
+                }
+              } else {
+                hideDropdown();
+              }
+            });
+
+            observer.observe(autocompleteItems, {
+              childList: true,
+              subtree: true
+            });
+
+            // Handle click on toggle button
+            const toggleButton = navRef.current?.querySelector('.f3-autocomplete-toggle');
+            if (toggleButton) {
+              toggleButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (autocompleteItems.children.length > 0) {
+                  const isVisible = autocompleteItems.style.display !== 'none';
+                  if (isVisible) {
+                    hideDropdown();
+                  } else {
+                    showDropdown();
+                    autocompleteInput.focus();
+                  }
+                }
+              });
+            }
+
+            // Also hide when clicking outside
+            document.addEventListener('click', (e) => {
+              if (!autocompleteContainer.contains(e.target)) {
+                hideDropdown();
+              }
+            });
+          }
+        }, 200);
       } catch (err) {
         console.error('Failed to initialize person search dropdown:', err);
       }
-
 
       const f3EditTree = f3Chart.editTree()
         .fixed(true)
         .setFields(["first name", "last name", "birthday", "anniversary", "mobile_no", "whatsapp_number", "achievements", "profession", "address", "death_date", "nick_name"])
         .setEditFirst(false)
-        .setOnChange(() => {
-          // This will only be called by admins
+        .setOnChange(async () => {
+          // THIS IS CALLED WHEN ADMIN UPDATES THE TREE
           const updatedData = f3EditTree.getStoreDataCopy();
-          console.log('Data changed, saving to localStorage:', updatedData);
+          console.log('Saving updated data to Cloudflare Workers KV...');
 
           try {
+            // 1. Save to LocalStorage for immediate fallback
             localStorage.setItem('familyTreeData', JSON.stringify(updatedData));
-            console.log('Data saved to localStorage');
+
+            // 2. PUSH TO CLOUDFLARE
+            const response = await fetch(CLOUDFLARE_WORKER_URL, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": ADMIN_SECRET_PASSWORD
+              },
+              body: JSON.stringify(updatedData)
+            });
+
+            if (response.ok) {
+              console.log('Successfully saved to Cloudflare');
+            } else {
+              console.error('Failed to save to Cloudflare:', response.statusText);
+              alert("Error saving to cloud. Data kept in local cache.");
+            }
           } catch (error) {
-            console.error('Error saving data to localStorage:', error);
+            console.error('Error in save process:', error);
           }
 
           setTimeout(() => {
@@ -114,70 +236,66 @@ export default function FamilyTree() {
           }, 500);
         })
         .setOnFormCreation((props) => {
-          console.log('Form creation props:', props);
-          console.log('Form creator object:', props.form_creator);
-          console.log('Full datum:', props.form_creator?.datum);
-
           const formContainer = props.cont;
-
-          // Add profile image at the top for both user and admin
-          // Get person data from the chart store using datum_id
           const datumId = props.form_creator?.datum_id;
           const personData = datumId
             ? chartInstanceRef.current.store.getData().find(p => p.id === datumId)?.data
             : null;
           const avatarUrl = personData?.avatar;
 
-          console.log('Datum ID:', datumId);
-          console.log('Person data:', personData);
-          console.log('Avatar URL:', avatarUrl);
+          // Always create image container, even if no avatar URL
+          const imageContainer = document.createElement('div');
+          imageContainer.className = 'profile-image-container';
+          imageContainer.style.cssText = `
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px 0;
+            margin-bottom: 20px;
+          `;
 
+          const img = document.createElement('img');
+
+          // Use placeholder if no avatar URL
           if (avatarUrl) {
-            // Create image container
-            const imageContainer = document.createElement('div');
-            imageContainer.className = 'profile-image-container';
-            imageContainer.style.cssText = `
-              display: flex;
-              justify-content: center;
-              align-items: center;
-              padding: 20px 0;
-              margin-bottom: 20px;
-            `;
-
-            // Create circular image
-            const img = document.createElement('img');
             img.src = avatarUrl;
-            img.alt = 'Profile Picture';
-            img.style.cssText = `
-              width: 120px;
-              height: 120px;
-              border-radius: 50%;
-              object-fit: cover;
-              border: 3px solid var(--text-color);
-              box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-            `;
-
-            imageContainer.appendChild(img);
-
-            // Insert at the very top of the form container
-            const formElement = formContainer.querySelector('.f3-form');
-            if (formElement && formElement.firstChild) {
-              formElement.insertBefore(imageContainer, formElement.firstChild);
-            } else if (formContainer.firstChild) {
-              formContainer.insertBefore(imageContainer, formContainer.firstChild);
-            }
           } else {
-            console.warn('No avatar URL found for this person');
+            // Create a placeholder SVG image
+            const placeholderSvg = `
+              <svg width="120" height="120" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="60" cy="60" r="60" fill="#555"/>
+                <circle cx="60" cy="45" r="20" fill="#888"/>
+                <path d="M 30 100 Q 30 80 60 80 Q 90 80 90 100" fill="#888"/>
+              </svg>
+            `;
+            img.src = 'data:image/svg+xml;base64,' + btoa(placeholderSvg);
+          }
+
+          img.alt = 'Profile Picture';
+          img.style.cssText = `
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 3px solid var(--text-color);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+          `;
+
+          imageContainer.appendChild(img);
+
+          const formElement = formContainer.querySelector('.f3-form');
+          if (formElement && formElement.firstChild) {
+            formElement.insertBefore(imageContainer, formElement.firstChild);
+          } else if (formContainer.firstChild) {
+            formContainer.insertBefore(imageContainer, formContainer.firstChild);
           }
 
           if (user_type === 'user') {
-            // 1. Change the title to "Person Details"
             const titleElement = formContainer.querySelector('.f3-edit-form-title');
             if (titleElement) {
               titleElement.textContent = 'Person Details';
             }
 
-            // 2. Make all input fields read-only
             const inputs = formContainer.querySelectorAll('input, textarea');
             inputs.forEach(input => {
               input.readOnly = true;
@@ -186,22 +304,15 @@ export default function FamilyTree() {
               input.style.color = 'inherit';
             });
 
-            // 3. Hide all action buttons
-
-            // *** THIS IS THE CORRECTED PART ***
-            // Hide the "Update" button
             const submitButton = formContainer.querySelector('.f3-edit-form-submit-btn');
             if (submitButton) submitButton.style.display = 'none';
 
-            // Hide the "Add Relative" button
             const addRelativeButton = formContainer.querySelector('.f3-add-relative-btn');
             if (addRelativeButton) addRelativeButton.style.display = 'none';
 
-            // Hide the "Remove Person" button
             const removePersonButton = formContainer.querySelector('.f3-edit-form-delete-btn');
             if (removePersonButton) removePersonButton.style.display = 'none';
           } else if (user_type === 'admin') {
-            // For admins, override the add relative button behavior
             const formContainer = props.cont;
 
             setTimeout(() => {
@@ -210,27 +321,32 @@ export default function FamilyTree() {
                 addRelativeButton.onclick = (e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  console.log('Add relative button clicked in form');
-
-                  // Get the current person's data using datum_id
                   const currentPersonId = props.form_creator?.datum_id;
                   const currentPerson = chartInstanceRef.current.store.getData().find(p => p.id === currentPersonId);
-                  console.log('Current person ID:', currentPersonId);
-                  console.log('Current person data:', currentPerson);
 
                   if (currentPerson) {
-                    // Same simple approach as the card button
                     f3EditTree.addRelative(currentPerson);
                     chartInstanceRef.current.updateMainId(currentPerson.id);
                     chartInstanceRef.current.updateTree({});
                   }
                 };
               }
+
+              // Hide the "Remove Relation" button
+              const removeRelButtons = formContainer.querySelectorAll('.f3-edit-form-rel-delete-btn');
+              removeRelButtons.forEach(btn => btn.style.display = 'none');
+
+              // Fallback: search for any button that might contain "Remove Relation" text
+              const allButtons = formContainer.querySelectorAll('button, .f3-edit-form-submit-btn, .f3-edit-form-delete-btn');
+              allButtons.forEach(btn => {
+                if (btn.textContent && (btn.textContent.includes('Remove Relation') || btn.textContent.includes('remove relation'))) {
+                  btn.style.display = 'none';
+                }
+              });
             }, 100);
           }
         });
 
-      // Conditionally remove on-card edit/add icons for non-admins
       if (user_type !== 'admin') {
         f3EditTree.setNoEdit();
       }
@@ -247,7 +363,6 @@ export default function FamilyTree() {
           const card = cardElement.querySelector('.card-inner');
 
           d3.select(card).style('position', 'relative');
-
           d3.select(card).selectAll('.f3-svg-circle-hover').remove();
 
           if (user_type === 'admin') {
@@ -277,10 +392,7 @@ export default function FamilyTree() {
 
             const addHandler = (e) => {
               e.stopPropagation();
-              console.log('Add button clicked for person:', d.data);
-              // Directly activate add relative mode instead of opening edit form
               f3EditTree.addRelative(d.data);
-              // Center the tree on the selected person to show relationship options
               f3Chart.updateMainId(d.data.id);
               f3Chart.updateTree({});
             };
@@ -296,9 +408,7 @@ export default function FamilyTree() {
           return;
         }
 
-        // Handle relationship placeholder cards (new relatives)
         if (d.data._new_rel_data) {
-          console.log('Clicked on relationship placeholder:', d.data._new_rel_data);
           f3EditTree.open(d.data);
           return;
         }
@@ -312,33 +422,26 @@ export default function FamilyTree() {
 
       f3Chart.updateTree({ initial: true });
 
-      // Override the closeForm method to prevent tree recentering
       const originalCloseForm = f3EditTree.closeForm;
       f3EditTree.closeForm = function () {
         this.formCont.close();
-        // Use 'inherit' tree_position to prevent recentering
         this.store.updateTree({ tree_position: 'inherit' });
       };
 
       setIsInitialized(true);
 
-      // Setup MutationObserver to detect form opening/closing
-      const formCont = containerRef.current.querySelector('.f3-form-cont');
-      if (formCont) {
+      const formContNode = containerRef.current.querySelector('.f3-form-cont');
+      if (formContNode) {
         const observer = new MutationObserver((mutations) => {
           mutations.forEach((mutation) => {
             if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
-              const isOpen = formCont.classList.contains('opened');
+              const isOpen = formContNode.classList.contains('opened');
               setIsFormOpen(isOpen);
             }
           });
         });
 
-        observer.observe(formCont, { attributes: true });
-
-        // Store observer for cleanup if needed, but since we clear chart in cleanup, 
-        // the node observer is attached to will be removed anyway. 
-        // Explicit cleanup is safer though.
+        observer.observe(formContNode, { attributes: true });
         chartInstanceRef.current.formObserver = observer;
       }
     };
@@ -358,7 +461,16 @@ export default function FamilyTree() {
         navRef.current.innerHTML = '';
       }
     };
-  }, [resetKey]);
+  }, [treeData]); // Chart rebuilds if treeData changes
+
+  // RENDER LOADING STATE
+  if (loading) {
+    return (
+      <div style={{ width: '100vw', height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgb(33,33,33)', color: 'white' }}>
+        <h2>Loading Family Tree...</h2>
+      </div>
+    );
+  }
 
   return (
     <div style={{ width: '100vw', height: '100vh', margin: 0 }}>
@@ -388,7 +500,7 @@ export default function FamilyTree() {
               border: '1px solid #666',
               borderRadius: '4px',
               cursor: 'pointer',
-              marginTop: '1px' // Align with the search input
+              marginTop: '1px'
             }}
           >
             Reset View

@@ -96,3 +96,8 @@
 .f3-autocomplete-item > div {
   color: #000000 !important;
 }
+
+.f3 {
+  --female-color: rgb(255, 70, 163);
+  --male-color: rgb(3, 155, 229);
+}
